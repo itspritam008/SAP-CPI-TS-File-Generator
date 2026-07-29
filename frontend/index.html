@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPI Technical Specification Generator</title>
+    <style>
+        :root {
+            --navy: #1F3864;
+            --orange: #F2661D;
+            --bg: #F4F7FB;
+            --slate: #44546A;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 520px;
+            text-align: center;
+        }
+        h2 {
+            color: var(--navy);
+            margin-bottom: 8px;
+        }
+        p {
+            color: var(--slate);
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+        .upload-area {
+            border: 2px dashed #B0C4DE;
+            border-radius: 8px;
+            padding: 30px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #FAFCFE;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--orange);
+            background: #FFF8F5;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .btn {
+            background-color: var(--navy);
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 20px;
+            width: 100%;
+            transition: background 0.2s ease;
+        }
+        .btn:hover {
+            background-color: #152747;
+        }
+        .btn:disabled {
+            background-color: #A0AEC0;
+            cursor: not-allowed;
+        }
+        .file-info {
+            margin-top: 15px;
+            font-weight: 600;
+            color: var(--orange);
+            word-break: break-all;
+        }
+        .spinner {
+            display: none;
+            margin: 15px auto 0;
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--orange);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #status-msg {
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        .error { color: #C0392B; }
+        .success { color: #2E7D32; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>SAP CPI TS Generator</h2>
+    <p>Upload your CPI iFlow export (.zip) to automatically generate a formatted Technical Specification .docx document.</p>
+
+    <form id="uploadForm">
+        <div class="upload-area" id="dropZone">
+            <svg width="48" height="48" fill="none" stroke="#1F3864" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+            <p style="margin: 10px 0 0 0;">Drag & drop your <strong>.zip</strong> file here, or click to browse</p>
+            <input type="file" id="fileInput" accept=".zip">
+        </div>
+        
+        <div class="file-info" id="fileName"></div>
+        <button type="submit" class="btn" id="submitBtn" disabled>Generate & Download TS</button>
+        <div class="spinner" id="spinner"></div>
+        <div id="status-msg"></div>
+    </form>
+</div>
+
+<script>
+    const API_URL = '/generate';
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileName');
+    const submitBtn = document.getElementById('submitBtn');
+    const uploadForm = document.getElementById('uploadForm');
+    const spinner = document.getElementById('spinner');
+    const statusMsg = document.getElementById('status-msg');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+        }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length) {
+            fileInput.files = files;
+            handleFileSelect();
+        }
+    });
+
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect() {
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            if (file.name.endsWith('.zip')) {
+                fileNameDisplay.textContent = `Selected: ${file.name}`;
+                submitBtn.disabled = false;
+                statusMsg.textContent = '';
+            } else {
+                fileNameDisplay.textContent = '';
+                submitBtn.disabled = true;
+                statusMsg.className = 'error';
+                statusMsg.textContent = 'Please select a .zip file.';
+            }
+        }
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!fileInput.files.length) return;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        submitBtn.disabled = true;
+        spinner.style.display = 'block';
+        statusMsg.textContent = 'Generating specification document...';
+        statusMsg.className = '';
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || 'Server error occurred.');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.headers.get('content-disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Technical_Specification.docx';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+            statusMsg.className = 'success';
+            statusMsg.textContent = 'Technical specification generated successfully!';
+        } catch (err) {
+            statusMsg.className = 'error';
+            statusMsg.textContent = err.message;
+        } finally {
+            submitBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    });
+</script>
+
+</body>
+</html>
