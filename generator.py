@@ -289,6 +289,7 @@ def parse_cpi_iflow_zip(zip_file_path):
                 is_timer_iflow = False
                 receiver_candidates = []
                 sender_candidates = []
+                channel_candidates = []
 
                 # First pass: Check for Timer Start Events
                 for elem in tree.iter():
@@ -341,27 +342,44 @@ def parse_cpi_iflow_zip(zip_file_path):
                                     if any(term in k.lower() for term in ["credential", "alias", "user", "key", "auth", "password", "certificate", "material"]):
                                         _add_security_material(data, k, v)
 
-                        # Determine channel direction based on names, refs, and adapter semantics
-                        channel_role = infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter_type, is_timer_iflow)
-                        if channel_role == 'sender' and not is_timer_iflow:
+                        channel_candidates.append({
+                            "adapter_type": adapter_type,
+                            "channel_name": channel_name,
+                            "channel_id": channel_id,
+                            "source_ref": source_ref,
+                            "target_ref": target_ref,
+                            "channel_props": channel_props,
+                            "channel_role": infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter_type, is_timer_iflow)
+                        })
+
+                        if channel_candidates[-1]["channel_role"] == 'sender':
                             data["sender_params"] = channel_props
                             data["sender_adapter_type"] = adapter_type
-                            data["execution_mode"] = "Real-time / Event-driven"
-                        elif channel_role == 'receiver':
-                            data["receiver_params"].extend(channel_props)
-                            data["receiver_adapter_type"] = adapter_type
-                        elif not is_timer_iflow:
-                            # Fall back to sensible defaults when channel role is ambiguous
-                            if any(term in adapter_type.lower() for term in ["idoc", "odata", "rfc", "jdbc", "sap", "s4", "s4hana", "edi", "as2", "jms", "mq"]):
-                                data["receiver_params"].extend(channel_props)
-                                data["receiver_adapter_type"] = adapter_type
-                            elif adapter_type.lower() == "sftp" and is_timer_iflow:
-                                data["sender_params"] = channel_props
-                                data["sender_adapter_type"] = adapter_type
+                            if is_timer_iflow:
                                 data["execution_mode"] = "Scheduled / Batched"
                                 data["synchronous_asynchronous"] = "Asynchronous"
                                 data["direction"] = "Scheduled"
                                 data["frequency"] = "Configured Cron Schedule"
+                            else:
+                                data["execution_mode"] = "Real-time / Event-driven"
+                        elif channel_candidates[-1]["channel_role"] == 'receiver':
+                            data["receiver_params"].extend(channel_props)
+                            data["receiver_adapter_type"] = adapter_type
+                        else:
+                            # Fall back to sensible defaults when channel role is ambiguous
+                            if any(term in adapter_type.lower() for term in ["idoc", "odata", "rfc", "jdbc", "sap", "s4", "s4hana", "edi", "as2", "jms", "mq"]):
+                                data["receiver_params"].extend(channel_props)
+                                data["receiver_adapter_type"] = adapter_type
+                            elif adapter_type.lower() == "sftp":
+                                data["sender_params"] = channel_props
+                                data["sender_adapter_type"] = adapter_type
+                                if is_timer_iflow:
+                                    data["execution_mode"] = "Scheduled / Batched"
+                                    data["synchronous_asynchronous"] = "Asynchronous"
+                                    data["direction"] = "Scheduled"
+                                    data["frequency"] = "Configured Cron Schedule"
+                                else:
+                                    data["execution_mode"] = "Real-time / Event-driven"
                             elif adapter_type.lower() in SENDER_PREFERRED_ADAPTERS:
                                 data["sender_params"] = channel_props
                                 data["sender_adapter_type"] = adapter_type
@@ -394,6 +412,40 @@ def parse_cpi_iflow_zip(zip_file_path):
                     # Remove duplicates while preserving order
                     unique_receivers = list(dict.fromkeys(receiver_candidates))
                     data["receiver_system"] = " / ".join(unique_receivers)
+
+                # Second pass: if no clear sender/receiver was found, use channel candidate heuristics
+                if (not data["sender_params"] or not data["receiver_params"]) and channel_candidates:
+                    for candidate in channel_candidates:
+                        if candidate["channel_role"] == "sender":
+                            data["sender_params"] = candidate["channel_props"]
+                            data["sender_adapter_type"] = candidate["adapter_type"]
+                            if is_timer_iflow:
+                                data["execution_mode"] = "Scheduled / Batched"
+                                data["synchronous_asynchronous"] = "Asynchronous"
+                                data["direction"] = "Scheduled"
+                                data["frequency"] = "Configured Cron Schedule"
+                        elif candidate["channel_role"] == "receiver":
+                            data["receiver_params"] = candidate["channel_props"]
+                            data["receiver_adapter_type"] = candidate["adapter_type"]
+
+                # If still ambiguous, prioritize explicit adapter names
+                if not data["receiver_params"]:
+                    for candidate in channel_candidates:
+                        if candidate["adapter_type"].lower() == "idoc":
+                            data["receiver_params"] = candidate["channel_props"]
+                            data["receiver_adapter_type"] = candidate["adapter_type"]
+                            break
+                if not data["sender_params"]:
+                    for candidate in channel_candidates:
+                        if candidate["adapter_type"].lower() == "sftp":
+                            data["sender_params"] = candidate["channel_props"]
+                            data["sender_adapter_type"] = candidate["adapter_type"]
+                            if is_timer_iflow:
+                                data["execution_mode"] = "Scheduled / Batched"
+                                data["synchronous_asynchronous"] = "Asynchronous"
+                                data["direction"] = "Scheduled"
+                                data["frequency"] = "Configured Cron Schedule"
+                            break
 
                 # Extract steps logic
                 extracted_steps = []
