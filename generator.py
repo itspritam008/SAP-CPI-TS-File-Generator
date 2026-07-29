@@ -101,6 +101,7 @@ RECEIVER_ONLY_ADAPTERS = {
 }
 
 SENDER_ONLY_ADAPTERS = {"timer"}
+SENDER_PREFERRED_ADAPTERS = {"sftp", "ftp", "file", "http", "https", "soap", "rest", "api", "webservice", "mail", "smtp", "imap", "pop"}
 
 
 def normalize_adapter_type(adapter_type):
@@ -348,13 +349,23 @@ def parse_cpi_iflow_zip(zip_file_path):
                             data["receiver_adapter_type"] = adapter_type
                         elif not is_timer_iflow:
                             # Fall back to sensible defaults when channel role is ambiguous
-                            if any(term in adapter_type.lower() for term in ["idoc", "odata", "rfc", "jdbc", "sap"]):
+                            if any(term in adapter_type.lower() for term in ["idoc", "odata", "rfc", "jdbc", "sap", "s4", "s4hana", "edi", "as2", "jms", "mq"]):
                                 data["receiver_params"].extend(channel_props)
                                 data["receiver_adapter_type"] = adapter_type
-                            else:
+                            elif adapter_type.lower() == "sftp" and is_timer_iflow:
+                                data["sender_params"] = channel_props
+                                data["sender_adapter_type"] = adapter_type
+                                data["execution_mode"] = "Scheduled / Batched"
+                                data["synchronous_asynchronous"] = "Asynchronous"
+                                data["direction"] = "Scheduled"
+                                data["frequency"] = "Configured Cron Schedule"
+                            elif adapter_type.lower() in SENDER_PREFERRED_ADAPTERS:
                                 data["sender_params"] = channel_props
                                 data["sender_adapter_type"] = adapter_type
                                 data["execution_mode"] = "Real-time / Event-driven"
+                            else:
+                                data["receiver_params"].extend(channel_props)
+                                data["receiver_adapter_type"] = adapter_type
 
                 # Dynamic System Name Resolution based on Participant roles / Names
                 for p_id, p_name in participants.items():
