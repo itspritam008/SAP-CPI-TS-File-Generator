@@ -7,7 +7,7 @@ cover page, auto-buildable table of contents, a redesigned process-flow
 diagram, and consistently styled tables throughout.
 
 Run:  python generate_ts_docs.py
-Reads every *.zip in ZIP_DIRECTORY_PATH, writes one UID_U057_<iflow>.docx per ZIP
+Reads every *.zip in ZIP_DIRECTORY_PATH, writes one Technical Specifications_<iflow>.docx per ZIP
 next to this script.
 """
 
@@ -93,6 +93,87 @@ def _is_timer_start_element(elem):
 def sanitize_output_name(name):
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", name or "iflow").strip("._-")
     return safe_name or "iflow"
+
+
+RECEIVER_ONLY_ADAPTERS = {
+    "idoc", "odata", "rfc", "jdbc", "sap", "s4", "s4hana", "edi", "as2", "jms", "mq",
+    "api", "webservice", "rest"
+}
+
+SENDER_ONLY_ADAPTERS = {"timer"}
+
+
+def normalize_adapter_type(adapter_type):
+    if not adapter_type:
+        return "Adapter"
+    normalized = adapter_type.strip().lower()
+    if "idoc" in normalized:
+        return "IDoc"
+    if "odata" in normalized:
+        return "OData"
+    if "https" in normalized:
+        return "HTTPS"
+    if "http" in normalized:
+        return "HTTP"
+    if "sftp" in normalized:
+        return "SFTP"
+    if "ftp" in normalized:
+        return "FTP"
+    if "file" in normalized:
+        return "File"
+    if "soap" in normalized:
+        return "SOAP"
+    if "rest" in normalized or "api" in normalized or "webservice" in normalized:
+        return "REST"
+    if "mail" in normalized or "smtp" in normalized or "pop" in normalized or "imap" in normalized:
+        return "Mail"
+    if "timer" in normalized or "schedule" in normalized or "cron" in normalized:
+        return "Timer"
+    if "jdbc" in normalized:
+        return "JDBC"
+    if "rfc" in normalized:
+        return "RFC"
+    if "as2" in normalized:
+        return "AS2"
+    if "jms" in normalized:
+        return "JMS"
+    if "edi" in normalized:
+        return "EDI"
+    return adapter_type
+
+
+def infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter_type, is_timer_iflow):
+    text = f"{channel_name} {channel_id} {source_ref} {target_ref} {adapter_type}".lower()
+    sender_indicators = [
+        "sender", "source", "inbound", "start", "trigger", "schedule", "sched", "timer",
+        "request", "client", "consumer", "poll", "receive", "listen"
+    ]
+    receiver_indicators = [
+        "receiver", "target", "outbound", "response", "destination", "send", "deliver",
+        "idoc", "odata", "sap", "s4", "s4hana", "db", "erp", "rfc", "jdbc", "jms", "mq",
+        "as2", "edi", "rest", "api", "webservice"
+    ]
+
+    if is_timer_iflow:
+        return "sender"
+
+    if any(term in target_ref.lower() for term in ["target", "receiver", "endpoint", "destination"]):
+        return "receiver"
+    if any(term in source_ref.lower() for term in ["source", "sender", "start", "trigger"]):
+        return "sender"
+
+    adapter_lower = adapter_type.strip().lower()
+    if adapter_lower in RECEIVER_ONLY_ADAPTERS:
+        return "receiver"
+    if adapter_lower in SENDER_ONLY_ADAPTERS:
+        return "sender"
+
+    if any(term in text for term in receiver_indicators):
+        return "receiver"
+    if any(term in text for term in sender_indicators):
+        return "sender"
+
+    return None
 
 
 def _security_material_label(key, value):
@@ -231,8 +312,9 @@ def parse_cpi_iflow_zip(zip_file_path):
                             participants[p_id] = p_name
 
                     elif tag_clean == 'channel':
-                        adapter_type = elem.attrib.get('type', 'Adapter')
+                        adapter_type = normalize_adapter_type(elem.attrib.get('type', 'Adapter'))
                         channel_name = elem.attrib.get('name', '')
+                        channel_id = elem.attrib.get('id', '')
                         source_ref = elem.attrib.get('sourceRef', '')
                         target_ref = elem.attrib.get('targetRef', '')
 
@@ -255,17 +337,24 @@ def parse_cpi_iflow_zip(zip_file_path):
                                     if any(term in k.lower() for term in ["credential", "alias", "user", "key", "auth", "password", "certificate", "material"]):
                                         _add_security_material(data, k, v)
 
-                        # Determine if Inbound Channel (Sender) or Outbound Channel (Receiver)
-                        is_inbound = any(term in channel_name.lower() or term in elem.attrib.get('id', '').lower() 
-                                         for term in ["sender", "inbound", "start", "https", "soap", "sftp"])
-                        
-                        if is_inbound and not is_timer_iflow:
+                        # Determine channel direction based on names, refs, and adapter semantics
+                        channel_role = infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter_type, is_timer_iflow)
+                        if channel_role == 'sender' and not is_timer_iflow:
                             data["sender_params"] = channel_props
                             data["sender_adapter_type"] = adapter_type
                             data["execution_mode"] = "Real-time / Event-driven"
-                        else:
+                        elif channel_role == 'receiver':
                             data["receiver_params"].extend(channel_props)
                             data["receiver_adapter_type"] = adapter_type
+                        elif not is_timer_iflow:
+                            # Fall back to sensible defaults when channel role is ambiguous
+                            if any(term in adapter_type.lower() for term in ["idoc", "odata", "rfc", "jdbc", "sap"]):
+                                data["receiver_params"].extend(channel_props)
+                                data["receiver_adapter_type"] = adapter_type
+                            else:
+                                data["sender_params"] = channel_props
+                                data["sender_adapter_type"] = adapter_type
+                                data["execution_mode"] = "Real-time / Event-driven"
 
                 # Dynamic System Name Resolution based on Participant roles / Names
                 for p_id, p_name in participants.items():
@@ -891,7 +980,7 @@ def build_visteon_ts_docx(iflow_data, logo_path=PRIMARY_LOGO_PATH, output_dir=".
     rev_headers = ["Version", "Effective Date", "Description", "Change Ref", "Affected Section",
                    "Prepared By", "Reviewed By", "Approved By"]
     new_headed_table(doc, rev_headers,
-                      [["1.0", "03/07/2026", "Initial Draft", "-", "All Sections", "Vikash", "-", "Vivek Kadam"]])
+                      [["1.0", "03/07/2026", "Initial Draft", "-", "All Sections", "-", "-", "Vivek Kadam"]])
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
     # ---------------- 1. OVERVIEW ----------------
