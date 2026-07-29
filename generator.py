@@ -147,7 +147,7 @@ def infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter
     text = f"{channel_name} {channel_id} {source_ref} {target_ref} {adapter_type}".lower()
     sender_indicators = [
         "sender", "source", "inbound", "start", "trigger", "schedule", "sched", "timer",
-        "request", "client", "consumer", "poll", "receive", "listen"
+        "request", "client", "consumer", "poll", "receive", "listen", "sftp", "ftp", "file"
     ]
     receiver_indicators = [
         "receiver", "target", "outbound", "response", "destination", "send", "deliver",
@@ -155,7 +155,10 @@ def infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter
         "as2", "edi", "rest", "api", "webservice"
     ]
 
-    if is_timer_iflow:
+    adapter_lower = adapter_type.strip().lower()
+    if adapter_lower in RECEIVER_ONLY_ADAPTERS:
+        return "receiver"
+    if adapter_lower in SENDER_ONLY_ADAPTERS or adapter_lower in SENDER_PREFERRED_ADAPTERS:
         return "sender"
 
     if any(term in target_ref.lower() for term in ["target", "receiver", "endpoint", "destination"]):
@@ -163,11 +166,11 @@ def infer_channel_role(channel_name, channel_id, source_ref, target_ref, adapter
     if any(term in source_ref.lower() for term in ["source", "sender", "start", "trigger"]):
         return "sender"
 
-    adapter_lower = adapter_type.strip().lower()
-    if adapter_lower in RECEIVER_ONLY_ADAPTERS:
-        return "receiver"
-    if adapter_lower in SENDER_ONLY_ADAPTERS:
-        return "sender"
+    if is_timer_iflow:
+        if "sftp" in text or "ftp" in text or "file" in text:
+            return "sender"
+        if "idoc" in text or "rfc" in text or "odata" in text:
+            return "receiver"
 
     if any(term in text for term in receiver_indicators):
         return "receiver"
