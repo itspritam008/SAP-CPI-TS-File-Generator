@@ -4,6 +4,15 @@ import tempfile
 from flask import Flask, request, send_file, jsonify, send_from_directory
 from generator import parse_cpi_iflow_zip, build_visteon_ts_docx
 
+api_key = os.getenv("GEMINI_API_KEY")
+
+if api_key:
+    # Prints the first 4 characters and masks the rest (e.g., "AIza********")
+    masked_key = f"{api_key[:4]}********" 
+    print(f"✅ SUCCESS: Gemini API Key found in environment: {masked_key}")
+else:
+    print("❌ ERROR: Gemini API Key is missing from the environment variables!")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 app = Flask(__name__, static_folder=FRONTEND_DIR, template_folder=FRONTEND_DIR)
@@ -43,8 +52,20 @@ def generate():
         zip_path = os.path.join(temp_dir, file.filename)
         file.save(zip_path)
 
+        user_inputs = {
+            'prepared_by': request.form.get('prepared_by', '').strip(),
+            'reviewed_by': request.form.get('reviewed_by', '').strip(),
+            'approved_by': request.form.get('approved_by', '').strip(),
+            'effective_date': request.form.get('effective_date', '').strip(),
+            'direction': request.form.get('direction', '').strip(),
+            'sync_async': request.form.get('sync_async', '').strip(),
+            'description': request.form.get('description', '').strip(),
+            'source_system': request.form.get('source_system', '').strip(),
+            'target_system': request.form.get('target_system', '').strip(),
+        }
+
         # Parse iFlow ZIP data
-        parsed_data = parse_cpi_iflow_zip(zip_path)
+        parsed_data = parse_cpi_iflow_zip(zip_path, user_inputs=user_inputs)
 
         # Generate DOCX document
         generated_docx_path = build_visteon_ts_docx(parsed_data, output_dir=temp_dir)
