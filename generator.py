@@ -80,7 +80,7 @@ def extract_adapters_and_systems_with_llm(bpmn_xml_content, iflow_name=""):
 
     try:
         response = llm_client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
         )
 
