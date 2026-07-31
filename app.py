@@ -15,7 +15,10 @@ else:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
-app = Flask(__name__, static_folder=FRONTEND_DIR, template_folder=FRONTEND_DIR)
+
+# Add static_url_path='' right here:
+app = Flask(__name__, static_folder=FRONTEND_DIR, template_folder=FRONTEND_DIR, static_url_path='')
+
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # Limit upload size to 32MB
 
 
