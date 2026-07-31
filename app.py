@@ -53,6 +53,8 @@ def generate():
         file.save(zip_path)
 
         user_inputs = {
+            'package_name': request.form.get('package_name', '').strip(),
+            'doc_version': request.form.get('doc_version', '').strip(),
             'prepared_by': request.form.get('prepared_by', '').strip(),
             'reviewed_by': request.form.get('reviewed_by', '').strip(),
             'approved_by': request.form.get('approved_by', '').strip(),
