@@ -80,7 +80,7 @@ def extract_adapters_and_systems_with_llm(bpmn_xml_content, iflow_name=""):
 
     try:
         response = llm_client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-3.5-flash-lite',
             contents=prompt,
         )
 
@@ -384,7 +384,12 @@ def apply_user_metadata(iflow_data, user_inputs=None):
     if _looks_like_placeholder(receiver_adapter):
         receiver_adapter = "REST / OData"
 
+    package_name = _normalize_text(user_inputs.get("package_name") or merged.get("package_name")) or "SAP Integration Package"
+    doc_version = _normalize_text(user_inputs.get("doc_version")) or "1.0"
+
     merged.update({
+        "package_name": package_name,
+        "doc_version": doc_version,
         "prepared_by": prepared_by,
         "reviewed_by": reviewed_by,
         "approved_by": approved_by,
@@ -1351,11 +1356,11 @@ def build_visteon_ts_docx(iflow_data, logo_path=PRIMARY_LOGO_PATH, output_dir=".
 
     cov_meta = new_kv_table(doc, [
         ("Integration Package", iflow_data['package_name']),
-        ("Document Version", "1.0"),
-        ("Prepared By", "-"),
-        ("Reviewed By", "\u2013"),
-        ("Approved By", "Vivek Kadam"),
-        ("Effective Date", "03/07/2026"),
+        ("Document Version", iflow_data['doc_version']),
+        ("Prepared By", iflow_data['prepared_by']),
+        ("Reviewed By", iflow_data['reviewed_by']),
+        ("Approved By", iflow_data['approved_by']),
+        ("Effective Date", iflow_data['effective_date']),
         ("Classification", "Visteon Internal & Confidential"),
     ])
     for row in cov_meta.rows:
@@ -1376,15 +1381,15 @@ def build_visteon_ts_docx(iflow_data, logo_path=PRIMARY_LOGO_PATH, output_dir=".
 
     # ---------------- REVISION HISTORY ----------------
     add_section_heading(doc, "", "Revision History")
-    rev_headers = ["Version", "Effective Date", "Description", "Change Ref", "Affected Section",
+    rev_headers = ["Version", "Effective Date", "Brief Description", "Change Ref", "Affected Section",
                    "Prepared By", "Reviewed By", "Approved By"]
     new_headed_table(doc, rev_headers,
-                      [["1.0", iflow_data.get('effective_date') or "TBD",
-                        iflow_data.get('description') or "Initial Draft",
+                      [[iflow_data['doc_version'], iflow_data['effective_date'],
+                        iflow_data['description'],
                         "-", "All Sections",
-                        iflow_data.get('prepared_by') or "-",
-                        iflow_data.get('reviewed_by') or "-",
-                        iflow_data.get('approved_by') or "-"]])
+                        iflow_data['prepared_by'],
+                        iflow_data['reviewed_by'],
+                        iflow_data['approved_by']]])
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
     # ---------------- 1. OVERVIEW ----------------
@@ -1551,9 +1556,7 @@ def build_visteon_ts_docx(iflow_data, logo_path=PRIMARY_LOGO_PATH, output_dir=".
     # ---------------- 15. REFERENCES ----------------
     add_section_heading(doc, "15.", "Project References")
     new_headed_table(doc, ["Sr. No.", "Document Name", "Reference Link"], [
-        ["1", f"FS_{iflow_name}.docx", ""],
-        ["2", "", ""],
-        ["3", "", ""],
+        ["", "", ""],
     ])
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 

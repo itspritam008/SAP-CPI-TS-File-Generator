@@ -15,7 +15,10 @@ else:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
-app = Flask(__name__, static_folder=FRONTEND_DIR, template_folder=FRONTEND_DIR)
+
+# Add static_url_path='' right here:
+app = Flask(__name__, static_folder=FRONTEND_DIR, template_folder=FRONTEND_DIR, static_url_path='')
+
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # Limit upload size to 32MB
 
 
@@ -53,6 +56,8 @@ def generate():
         file.save(zip_path)
 
         user_inputs = {
+            'package_name': request.form.get('package_name', '').strip(),
+            'doc_version': request.form.get('doc_version', '').strip(),
             'prepared_by': request.form.get('prepared_by', '').strip(),
             'reviewed_by': request.form.get('reviewed_by', '').strip(),
             'approved_by': request.form.get('approved_by', '').strip(),
