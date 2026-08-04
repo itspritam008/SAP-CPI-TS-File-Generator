@@ -75,7 +75,7 @@ def generate():
         # Generate DOCX document
         generated_docx_path = build_visteon_ts_docx(parsed_data, output_dir=temp_dir)
 
-        download_name = f"Technical Specifications_{parsed_data['iflow_name']}.docx"
+        download_name = f"TS_{parsed_data['iflow_name']}.docx"
 
         # Send generated file back to user
         response = send_file(
